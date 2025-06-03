@@ -82,7 +82,7 @@ class UploadVideoToArvan(View):
 
         return response
 #-------------------------------------------------------------------------------------------------------#
-class UploadChunkView(View):
+class UploadChuckView(View):
     """
     View to handle TUS-based video chunk uploads to ArvanCloud.
 
