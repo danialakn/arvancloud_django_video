@@ -1,0 +1,105 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}آپلود ویدیو{% endblock %}
+
+{% block content %}
+  <h1>آپلود ویدیو با tus-js-client</h1>
+
+  <input type="file" id="uploadInput">
+  <br><br>
+  <button id="startUploadBtn">شروع آپلود</button>
+  <br><br>
+  <progress id="uploadProgress" value="0" max="100"></progress>
+  <p id="uploadStatus"></p>
+
+  <script src="https://cdn.jsdelivr.net/npm/tus-js-client@2.3.0/dist/tus.js"></script>
+
+ <script>
+     function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== "") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          // Does this cookie string begin with the name we want?
+          if (cookie.substring(0, name.length + 1) === name + "=") {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  const input = document.getElementById("uploadInput");
+  const progress = document.getElementById("uploadProgress");
+  const statusText = document.getElementById("uploadStatus");
+  const startButton = document.getElementById("startUploadBtn");
+
+  let selectedFile = null;
+
+  input.addEventListener("change", function () {
+    selectedFile = input.files[0];
+    statusText.textContent = "فایل انتخاب شد: " + selectedFile.name;
+  });
+
+  startButton.addEventListener("click", function () {
+    if (!selectedFile) {
+      alert("لطفاً ابتدا یک فایل انتخاب کنید.");
+      return;
+    }
+
+    fetch("{% url 'video_app:upload-video-to-arvan' %}?arvan_channel_id={{ video.arvan_channel_id }}", {
+      method: "POST",
+      headers: {
+        "Upload-Length": selectedFile.size,
+        "Upload-Metadata": "filename " + btoa(selectedFile.name) + ",filetype " + btoa(selectedFile.type),
+          "X-CSRFToken": getCookie("csrftoken"),
+      },
+      credentials: "include"
+    })
+    .then(res => res.json())
+    .then(data => {
+      const uploadUrl = data.upload_url;
+
+      const upload = new tus.Upload(selectedFile, {
+          uploadUrl: "{% url 'video_app:upload-chunk' %}",
+          chunkSize: 2 * 1024 * 1024,  // مثلا 2 مگابایت
+          metadata: {
+            filename: selectedFile.name,
+            filetype: selectedFile.type
+          },
+          onError: error => statusText.textContent = "خطا: " + error,
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const percentage = (bytesUploaded / bytesTotal * 100).toFixed(2);
+            progress.value = percentage;
+          },
+          onSuccess: () => {
+              statusText.textContent = "آپلود کامل شد!";
+
+              fetch("{% url 'video_app:save-video-to-arvan' %}?arvan_channel_id={{ video.arvan_channel_id }}&video_pk={{ video.pk }}", {
+                method: "POST",
+                    headers: {
+                        "X-CSRFToken": getCookie("csrftoken"),
+                      },
+                    credentials: "include"
+              })
+              .then(res => res.json())
+              .then(data => {
+                console.log("ویدیو با موفقیت در آروان ذخیره شد:", data);
+                statusText.textContent += " ویدیو در آروان ذخیره شد.";
+              })
+              .catch(err => {
+                console.error("خطا در ذخیره‌سازی ویدیو:", err);
+                statusText.textContent += " اما ذخیره‌سازی نهایی ویدیو با مشکل مواجه شد.";
+              });
+            }
+
+        });
+
+      upload.start();
+    });
+  });
+</script>
+
+{% endblock %}
